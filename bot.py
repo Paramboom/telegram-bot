@@ -1,11 +1,15 @@
 import os
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+from flask import Flask, request, Response
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# --- Настройки ---
+# Создаем Flask-приложение
+app = Flask(__name__)
+
+# Токен бота из переменной окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_PATH = f"/{BOT_TOKEN}"  # путь вебхука
+
+# ID вашего канала (с минусом и 100 в начале)
 CHANNEL_ID = -1002891230799
 
 RULES = """
@@ -21,40 +25,47 @@ RULES = """
 9. Если вы не согласны с правилами чата, можете покинуть его.
 """
 
-# --- Flask приложение ---
-app = Flask(__name__)
-bot = Bot(token=BOT_TOKEN)
-dispatcher = Dispatcher(bot, None, workers=0)
+# Создаем ApplicationBuilder (Telegram)
+telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# --- Обработчики ---
-async def handle_channel_post(update: Update, context):
+# Команда /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Я бот, который комментирует новые посты.")
+
+telegram_app.add_handler(CommandHandler("start", start))
+
+# Обработчик постов из канала
+async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post:
-        await context.bot.send_message(
-            chat_id=update.channel_post.chat_id,
-            text=RULES,
-            message_thread_id=update.channel_post.message_id  # комментарий к посту
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=update.channel_post.chat_id,
+                text=RULES,
+                message_thread_id=update.channel_post.message_id
+            )
+        except Exception as e:
+            print(f"Ошибка при отправке комментария: {e}")
 
-dispatcher.add_handler(MessageHandler(filters.ALL & filters.ChatType.CHANNEL, handle_channel_post))
+telegram_app.add_handler(
+    MessageHandler(filters.ALL & filters.ChatType.CHANNEL, handle_channel_post)
+)
 
-# --- Вебхук ---
-@app.route(WEBHOOK_PATH, methods=["POST"])
+# Flask route для вебхука
+@app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    """Обрабатываем обновления от Telegram"""
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "OK"
+    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+    telegram_app.create_task(telegram_app.update_queue.put(update))
+    return Response("OK", status=200)
 
-# --- Главная страница ---
-@app.route("/")
-def index():
-    return "Bot is running!"
-
-# --- Установка вебхука автоматически при старте Render ---
+# Автоматическая установка вебхука при старте
 @app.before_first_request
 def set_webhook():
-    url = os.getenv("RENDER_EXTERNAL_URL")  # Render подставит публичный URL
-    webhook_url = f"{url}{WEBHOOK_PATH}"
-    bot.set_webhook(webhook_url)
+    port = int(os.environ.get("PORT", 5000))
+    url = os.environ.get("APP_URL")  # нужно указать URL вашего Render-сервиса
+    webhook_url = f"{url}/webhook/{BOT_TOKEN}"
+    telegram_app.bot.set_webhook(webhook_url)
     print(f"Webhook установлен: {webhook_url}")
 
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
