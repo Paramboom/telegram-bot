@@ -24,17 +24,21 @@ RULES = """
 async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяем, что это новый пост в канале
     if update.channel_post:
-        await context.bot.send_message(
-            chat_id=update.channel_post.chat_id,  # отправляем в тот же канал
-            text=RULES,
-            message_thread_id=update.channel_post.message_id  # в комментарии к посту
-        )
+        thread_id = update.channel_post.message_thread_id
+        if thread_id:  # Если включены комментарии
+            await context.bot.send_message(
+                chat_id=CHANNEL_ID,  # в канал
+                text=RULES,
+                message_thread_id=thread_id  # в комментарий к посту
+            )
+        else:
+            print("Комментарии в этом посте отключены")
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Ловим все сообщения из канала
-    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.CHANNEL, handle_channel_post))
+    # Ловим только новые посты в канале
+    app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, handle_channel_post))
 
     print("Бот запущен...")
     app.run_polling()
