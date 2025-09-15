@@ -2,11 +2,11 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# Токен бота из переменной окружения
+# Токен из переменной окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# ID твоей группы/канала
-CHANNEL_ID = -1002891230799  # <- заменяй на свой chat_id
+# ID твоего канала (с минусом и 100 в начале)
+CHANNEL_ID = -1002891230799
 
 RULES = """
 ПРАВИЛА ЧАТА:
@@ -21,20 +21,20 @@ RULES = """
 9. Если вы не согласны с правилами чата, можете покинуть его.
 """
 
-async def handle_new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Проверяем, что это сообщение из канала
+async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Проверяем, что это новый пост в канале
     if update.channel_post:
         await context.bot.send_message(
-            chat_id=update.channel_post.chat_id,
+            chat_id=update.channel_post.chat_id,  # отправляем в тот же канал
             text=RULES,
-            message_thread_id=update.channel_post.message_id  # ответ в комментариях
+            message_thread_id=update.channel_post.message_id  # в комментарии к посту
         )
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Фильтр для новых сообщений в канале
-    app.add_handler(MessageHandler(filters.CHANNEL_POSTS, handle_new_post))
+    # Ловим все сообщения из канала
+    app.add_handler(MessageHandler(filters.ALL & filters.ChatType.CHANNEL, handle_channel_post))
 
     print("Бот запущен...")
     app.run_polling()
