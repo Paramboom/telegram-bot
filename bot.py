@@ -1,9 +1,11 @@
 import os
+import asyncio
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes
+from aiohttp import web
 
-# Здесь задаём правила чата (можешь заменить текст внутри кавычек)
-CHAT_RULES = """
+# === Текст правил чата ===
+RULES_TEXT = """
 ПРАВИЛА ЧАТА:
 
 1. Будьте вежливы и уважительны к другим участникам чата. Не используйте оскорбительные или неприличные выражения.
@@ -17,31 +19,41 @@ CHAT_RULES = """
 9. Если вы не согласны с правилами чата, вы можете покинуть его.
 """
 
-# Функция-обработчик всех сообщений
-async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
-        chat_id = update.effective_chat.id
-        text = update.message.text
-        print(f"Сообщение в чате {chat_id}: {text}")
+# === Хэндлер команды /rules ===
+async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(RULES_TEXT)
 
-        # Автоответ правилами
-        await update.message.reply_text(CHAT_RULES)
+# === aiohttp Web server (для Render) ===
+async def handle(request):
+    return web.Response(text="Bot is running!")
 
-def main():
-    # Токен бота читаем из переменной окружения
-    TOKEN = os.environ.get("BOT_TOKEN")
-    if not TOKEN:
+async def start_webserver():
+    port = int(os.environ.get("PORT", 10000))
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Web server started on port {port}")
+
+# === Основная функция ===
+async def main():
+    token = os.getenv("BOT_TOKEN")
+    if not token:
         print("Ошибка: не задан BOT_TOKEN в переменных окружения!")
         return
 
-    # Создаём приложение
-    app = ApplicationBuilder().token(TOKEN).build()
+    # создаём приложение Telegram-бота
+    application = Application.builder().token(token).build()
 
-    # Обработчик ВСЕХ текстовых сообщений
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), on_message))
+    # регистрируем команду
+    application.add_handler(CommandHandler("rules", rules))
 
+    # запускаем вебсервер и бота параллельно
+    await start_webserver()
     print("Бот запущен...")
-    app.run_polling()
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
