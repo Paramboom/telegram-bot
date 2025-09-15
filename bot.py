@@ -1,59 +1,54 @@
 import os
-import asyncio
+import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from aiohttp import web
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-# === Текст правил чата ===
-RULES_TEXT = """
-ПРАВИЛА ЧАТА:
+# Логирование
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-1. Будьте вежливы и уважительны к другим участникам чата. Не используйте оскорбительные или неприличные выражения.
-2. Не спамьте и не рекламируйте что-либо в чате без разрешения администрации.
-3. Не разглашайте личную информацию других участников чата без их согласия.
-4. Не обсуждайте политические или религиозные темы в чате, если это может вызвать споры или конфликты.
+# Твои правила чата
+RULES = """ПРАВИЛА ЧАТА:
+
+1. Будьте вежливы и уважительны к другим участникам чата. Не используи‌те оскорбительные или неприличные выражения.
+2. Не спамьте и не рекламируи‌те что-либо в чате без разрешения администрации.
+3. Не разглашаи‌те личную информацию других участников чата без их согласия.
+4. Не обсуждаи‌те политические или религиозные темы в чате, если это может вызвать споры или конфликты.
 5. Если у вас есть вопрос или проблема, обратитесь к администратору чата или к другим участникам, чтобы получить помощь.
-6. Не используйте чат для распространения спама, вирусов или других вредоносных программ.
-7. Не публикуйте материалы, которые нарушают законы или этические нормы.
-8. Не нарушайте авторские права других людей или компаний.
+6. Не используи‌те чат для распространения спама, вирусов или других вредоносных программ.
+7. Не публикуи‌те материалы, которые нарушают законы или этические нормы.
+8. Не нарушаи‌те авторские права других людеи‌ или компании‌.
 9. Если вы не согласны с правилами чата, вы можете покинуть его.
 """
 
-# === Хэндлер команды /rules ===
-async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(RULES_TEXT)
+# Функция: когда в канале появляется новый пост
+async def post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post:
+        try:
+            await context.bot.send_message(
+                chat_id=update.channel_post.chat.id,
+                text=RULES,
+                reply_to_message_id=update.channel_post.message_id
+            )
+            logger.info("Правила отправлены под постом.")
+        except Exception as e:
+            logger.error(f"Ошибка при отправке правил: {e}")
 
-# === aiohttp Web server (для Render) ===
-async def handle(request):
-    return web.Response(text="Bot is running!")
+def main():
+    # Токен берём из переменной окружения (Render → Environment Variables)
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN не найден. Добавь его в Environment Variables на Render.")
 
-async def start_webserver():
-    port = int(os.environ.get("PORT", 10000))
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print(f"Web server started on port {port}")
+    application = Application.builder().token(TOKEN).build()
 
-# === Основная функция ===
-async def main():
-    token = os.getenv("BOT_TOKEN")
-    if not token:
-        print("Ошибка: не задан BOT_TOKEN в переменных окружения!")
-        return
+    # Слушаем только новые посты в канале
+    application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, post_handler))
 
-    # создаём приложение Telegram-бота
-    application = Application.builder().token(token).build()
-
-    # регистрируем команду
-    application.add_handler(CommandHandler("rules", rules))
-
-    # запускаем вебсервер и бота параллельно
-    await start_webserver()
-    print("Бот запущен...")
-    await application.run_polling()
+    logger.info("Бот запущен...")
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
