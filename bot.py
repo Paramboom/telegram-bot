@@ -3,9 +3,9 @@ from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Данные
-TOKEN = os.getenv("BOT_TOKEN")  # BOT_TOKEN задается в Environment Variables Render
-CHANNEL_ID = -1002891230799     # твой канал
+# ====== ДАННЫЕ ======
+TOKEN = os.getenv("BOT_TOKEN")  # Задай в Environment Variables на Render
+CHANNEL_ID = -1002891230799     # Твой канал
 RULES = """📌 ПРАВИЛА ЧАТА:
 1. Будьте вежливы и уважительны к другим участникам чата.
 2. Не спамьте и не рекламируйте что-либо без разрешения администрации.
@@ -18,38 +18,39 @@ RULES = """📌 ПРАВИЛА ЧАТА:
 9. Если вы не согласны с правилами чата, можете покинуть его.
 """
 
-# Flask app
+# ====== FLASK И TELEGRAM ======
 app = Flask(__name__)
 bot = Bot(TOKEN)
 application = Application.builder().token(TOKEN).build()
 
-# /start
+# ====== Хэндлеры ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Бот работает и готов комментировать посты!")
 
-# Новый пост в канале
 async def new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post and update.channel_post.chat.id == CHANNEL_ID:
-        chat_id = update.channel_post.chat.id
-        message_id = update.channel_post.message_id
-        await bot.send_message(chat_id=chat_id, text=RULES, reply_to_message_id=message_id)
+        await bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=RULES,
+            reply_to_message_id=update.channel_post.message_id
+        )
 
-# Хэндлеры
+# ====== Добавляем хэндлеры ======
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.ChatType.CHANNEL, new_post))
 
-# Flask endpoint для вебхука
+# ====== Webhook endpoint ======
 @app.route("/", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     application.update_queue.put_nowait(update)
     return "ok"
 
-# Установка вебхука
-@app.before_first_request
-def set_webhook():
-    url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/"
+# ====== Установка вебхука при старте ======
+if "RENDER_EXTERNAL_HOSTNAME" in os.environ:
+    url = f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/"
     bot.set_webhook(url)
 
+# ====== Запуск Flask ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
